@@ -1,0 +1,255 @@
+import json
+import os
+from datetime import datetime
+from google import genai
+import pandas as pd
+from PIL import Image, ExifTags
+import streamlit as st
+
+# ==========================================
+# 0. ตั้งค่าหน้าเว็บและการรองรับ HEIC
+# ==========================================
+try:
+    import pillow_heif
+    pillow_heif.register_heif_opener()
+except ImportError:
+    pass
+
+st.set_page_config(
+    page_title="ระบบลงสินค้า DN ver.001",
+    page_icon="📦",
+    layout="centered"  # เหมาะสำหรับการเปิดใช้งานผ่านมือถือ
+)
+
+# CSS ตกแต่งให้ปุ่มและฟอร์มดูใช้งานง่ายบนมือถือ
+st.markdown("""
+    <style>
+    .stApp { background-color: #F8FAFC !important; }
+    h1, h2, h3 { color: #0F172A !important; }
+    .stButton > button {
+        background-color: #2563EB !important;
+        color: #FFFFFF !important;
+        border-radius: 10px !important;
+        font-weight: 600;
+        width: 100%;
+    }
+    .stFormSubmitButton > button {
+        background-color: #10B981 !important;
+        color: #FFFFFF !important;
+        border-radius: 10px !important;
+        font-weight: 700;
+        width: 100%;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# ==========================================
+# 1. ตั้งค่า Gemini Client
+# ==========================================
+# ระบบจะดึงค่าจาก Environment Variable อัตโนมัติ หรือใส่คีย์ตรงนี้ได้เช่นกัน
+try:
+    GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+except Exception:
+    # กรณีรันบนคอมพิวเตอร์ส่วนตัว (Local) หากไม่ได้ตั้งค่า secrets ไว้ จะดึงจาก Environment หรือใส่คีย์สำรองตรงนี้ได้
+    GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "ใส่_API_Key_ของคุณที่นี่")
+
+# สร้าง Client ของ Google GenAI แบบใหม่
+if GEMINI_API_KEY and GEMINI_API_KEY != "GEMINI_API_KEY":
+    client = genai.Client(api_key=GEMINI_API_KEY)
+else:
+    client = genai.Client()
+
+# ==========================================
+# 2. Session State Initialization
+# ==========================================
+if "step" not in st.session_state:
+    st.session_state.step = 1  # 1: อัปโหลดบิลและสกัดตาราง, 2: ถ่ายรูปฉลากทีละชิ้น, 3: ตรวจสอบและบันทึก
+if "df_items" not in st.session_state:
+    st.session_state.df_items = pd.DataFrame(columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"])
+if "current_item_idx" not in st.session_state:
+    st.session_state.current_item_idx = 0
+if "supplier_name" not in st.session_state:
+    st.session_state.supplier_name = ""
+if "invoice_no" not in st.session_state:
+    st.session_state.invoice_no = ""
+if "invoice_date" not in st.session_state:
+    st.session_state.invoice_date = datetime.now().date()
+
+st.title("📦 ระบบลงสินค้า DN ver.001")
+st.markdown("---")
+
+# ==========================================
+# STEP 1: ถ่ายรูปบิล & AI สกัดรายการสินค้า
+# ==========================================
+if st.session_state.step == 1:
+    st.subheader("ขั้นตอนที่ 1: ถ่ายรูปบิลรับสินค้า")
+    
+    st.session_state.supplier_name = st.text_input("ชื่อบริษัท / ผู้จัดจำหน่าย (Supplier)", value=st.session_state.supplier_name)
+    st.session_state.invoice_no = st.text_input("เลขที่บิล / ใบกำกับภาษี", value=st.session_state.invoice_no)
+    st.session_state.invoice_date = st.date_input("วันที่ในบิล", value=st.session_state.invoice_date)
+    
+    bill_image = st.file_uploader("📸 ถ่ายรูปหรืออัปโหลดใบรับสินค้า", type=["png", "jpg", "jpeg", "heic"])
+    
+    if bill_image:
+        st.image(bill_image, caption="ใบรับสินค้าที่อัปโหลด", use_container_width=True)
+        
+    if st.button("🤖 ให้ AI สร้างตารางสินค้าจากบิล", disabled=not bill_image or not st.session_state.supplier_name):
+        with st.spinner("AI กำลังอ่านข้อมูลบิลและสร้างตาราง..."):
+            try:
+                img = Image.open(bill_image)
+                prompt = """คุณคือ AI ช่วยอ่านบิลสินค้า จงสกัดรายการสินค้าออกมาเป็น JSON เท่านั้น โดยมีโครงสร้างดังนี้:
+                {
+                  "items": [
+                    {
+                      "name": "ชื่อสินค้า",
+                      "qty": จำนวน (ตัวเลข),
+                      "price": ราคาต่อหน่วย (ตัวเลข)
+                    }
+                  ]
+                }"""
+                response = client.models.generate_content(
+                    model="gemini-3.5-flash-lite",
+                    contents=[img, prompt]
+                )
+                text_out = response.text.strip()
+                if text_out.startswith("```json"):
+                    text_out = text_out[7:-3]
+                
+                data = json.loads(text_out.strip())
+                items = data.get("items", [])
+                
+                rows = []
+                for idx, item in enumerate(items, start=1):
+                    rows.append({
+                        "ลำดับ": idx,
+                        "ชื่อสินค้า": item.get("name", ""),
+                        "จำนวน": item.get("qty", 1),
+                        "ราคา": item.get("price", 0.0),
+                        "Lot": "-",
+                        "MFG": "-",
+                        "EXP": "-"
+                    })
+                
+                st.session_state.df_items = pd.DataFrame(rows)
+                st.session_state.current_item_idx = 0
+                st.session_state.step = 2
+                st.rerun()
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาดในการอ่านบิล: {e}")
+
+# ==========================================
+# STEP 2: ถ่ายรูปฉลากสินค้าทีละรายการ (Item-by-Item)
+# ==========================================
+elif st.session_state.step == 2:
+    df = st.session_state.df_items
+    idx = st.session_state.current_item_idx
+    total_items = len(df)
+    
+    st.subheader(f"ขั้นตอนที่ 2: ถ่ายรูปฉลากสินค้า ({idx + 1} จาก {total_items})")
+    
+    if idx < total_items:
+        current_row = df.iloc[idx]
+        
+        st.info(f"👉 **กำลังสแกนสินค้า:**\n\n📌 **{current_row['ชื่อสินค้า']}**\n- จำนวน: {current_row['จำนวน']} | ราคา: {current_row['ราคา']}")
+        
+        # ใช้ camera_input เพื่อให้พนักงานกดถ่ายรูปจากมือถือได้ทันที
+        label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}")
+        
+        if label_image:
+            with st.spinner("AI กำลังอ่าน Lot, MFG, และ EXP จากฉลาก..."):
+                try:
+                    img = Image.open(label_image)
+                    prompt = """คุณคือ AI อ่านฉลากสินค้า จงอ่านข้อมูล Lot, MFG (วันที่ผลิต), และ EXP (วันหมดอายุ) จากรูปฉลากนี้ 
+                    ตอบกลับเป็น JSON เท่านั้น ในรูปแบบ:
+                    {
+                      "lot": "หมายเลขล็อต หรือ -",
+                      "mfg": "วันที่ผลิตรูปแบบ YYYY-MM-DD หรือ -",
+                      "exp": "วันหมดอายุรูปแบบ YYYY-MM-DD หรือ -"
+                    }"""
+                    response = client.models.generate_content(
+                        model="gemini-2.5-flash",
+                        contents=[img, prompt]
+                    )
+                    text_out = response.text.strip()
+                    if text_out.startswith("```json"):
+                        text_out = text_out[7:-3]
+                    
+                    label_data = json.loads(text_out.strip())
+                    
+                    # อัปเดตข้อมูลลงใน DataFrame ของชิ้นปัจจุบัน
+                    st.session_state.df_items.at[idx, "Lot"] = label_data.get("lot", "-")
+                    st.session_state.df_items.at[idx, "MFG"] = label_data.get("mfg", "-")
+                    st.session_state.df_items.at[idx, "EXP"] = label_data.get("exp", "-")
+                    
+                    st.success("✅ อ่านข้อมูลจากฉลากสำเร็จ!")
+                except Exception as e:
+                    st.error(f"อ่านฉลากไม่สำเร็จ: {e}")
+                    
+        # แสดงค่าที่บันทึกแล้วของสินค้านี้
+        st.markdown(f"**ข้อมูลปัจจุบัน:** Lot: `{current_row['Lot']}` | MFG: `{current_row['MFG']}` | EXP: `{current_row['EXP']}`")
+        
+        col_prev, col_next = st.columns(2)
+        with col_prev:
+            if idx > 0 and st.button("⬅️ ย้อนกลับ"):
+                st.session_state.current_item_idx -= 1
+                st.rerun()
+        with col_next:
+            if st.button("➡️ ถัดไป / บันทึกชิ้นนี้"):
+                if idx + 1 < total_items:
+                    st.session_state.current_item_idx += 1
+                    st.rerun()
+                else:
+                    st.session_state.step = 3
+                    st.rerun()
+                    
+        if st.button("⏭️ ข้ามรายการนี้ไปก่อน", type="secondary"):
+            if idx + 1 < total_items:
+                st.session_state.current_item_idx += 1
+                st.rerun()
+            else:
+                st.session_state.step = 3
+                st.rerun()
+
+# ==========================================
+# STEP 3: ตรวจสอบข้อมูลทั้งหมดและบันทึก Excel
+# ==========================================
+elif st.session_state.step == 3:
+    st.subheader("ขั้นตอนที่ 3: ตรวจสอบข้อมูลและบันทึก")
+    
+    st.write(f"📌 **Supplier:** {st.session_state.supplier_name}")
+    st.write(f"📌 **เลขที่บิล:** {st.session_state.invoice_no} | **วันที่:** {st.session_state.invoice_date}")
+    
+    # เปิดให้แก้ไขตารางขั้นสุดท้ายก่อนเซฟ
+    edited_df = st.data_editor(st.session_state.df_items, use_container_width=True)
+    st.session_state.df_items = edited_df
+    
+    col_back, col_save = st.columns(2)
+    with col_back:
+        if st.button("🔄 กลับไปถ่ายรูปใหม่"):
+            st.session_state.step = 2
+            st.session_state.current_item_idx = 0
+            st.rerun()
+            
+    with col_save:
+        if st.button("✅ ยืนยันและบันทึกเป็นไฟล์ Excel"):
+            target_dir = r"G:\ร้านยา\web app\excel file from extract"
+            os.makedirs(target_dir, exist_ok=True)
+            
+            safe_inv = "".join([c if c.isalnum() else "_" for c in str(st.session_state.invoice_no)])
+            file_name = f"DN_Receive_{safe_inv}.xlsx"
+            file_path = os.path.join(target_dir, file_name)
+            
+            try:
+                with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
+                    edited_df.to_excel(writer, sheet_name="Receive_Items", index=False)
+                    
+                st.success(f"🎉 บันทึกไฟล์สำเร็จเรียบร้อยแล้ว!\n\n📂 เซฟไว้ที่: `{file_path}`")
+                
+                if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
+                    st.session_state.step = 1
+                    st.session_state.df_items = pd.DataFrame(columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"])
+                    st.session_state.current_item_idx = 0
+                    st.session_state.invoice_no = ""
+                    st.rerun()
+            except Exception as e:
+                st.error(f"เกิดข้อผิดพลาดในการบันทึกไฟล์: {e}")
