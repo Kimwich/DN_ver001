@@ -1,10 +1,16 @@
 import json
 import os
+import io
 from datetime import datetime
 from google import genai
 import pandas as pd
 from PIL import Image, ExifTags
 import streamlit as st
+import smtplib
+from email import message
+from email.mime.application import MIMEApplication
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
 
 # ==========================================
 # 0. ตั้งค่าหน้าเว็บและการรองรับ HEIC
@@ -58,6 +64,42 @@ if GEMINI_API_KEY and GEMINI_API_KEY != "GEMINI_API_KEY":
     client = genai.Client(api_key=GEMINI_API_KEY)
 else:
     client = genai.Client()
+
+# ==========================================
+# 1.1 วางฟังก์ชันส่งอีเมลไว้ตรงนี้ (ระดับบนสุดของสคริปต์)
+# ==========================================
+def send_email_with_excel(excel_bytes, filename, supplier_name):
+  try:
+    sender_email = st.secrets["EMAIL_SENDER"]
+    sender_password = st.secrets["EMAIL_PASSWORD"]
+    receiver_email = st.secrets["EMAIL_RECEIVER"]
+
+    msg = MIMEMultipart()
+    msg["Subject"] = f"[รายงานสต็อก] บิลรับสินค้าจาก {supplier_name}"
+    msg["From"] = sender_email
+    msg["To"] = receiver_email
+
+    msg.attach(
+        MIMEText(
+            "สวัสดีครับคุณนิคกี้,\n\nแนบไฟล์ Excel รายการสินค้าจากบิลรับสินค้า"
+            f" {supplier_name} มาพร้อมกับอีเมลฉบับนี้ครับ",
+            "plain",
+        )
+    )
+
+    part = MIMEApplication(excel_bytes, Name=filename)
+    part["Content-Disposition"] = f'attachment; filename="{filename}"'
+    msg.attach(part)
+
+    with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+      server.login(sender_email, sender_password)
+      server.sendmail(sender_email, receiver_email, msg.as_string())
+
+    return True
+  except Exception as e:
+    st.error(f"เกิดข้อผิดพลาดในการส่งอีเมล: {e}")
+    return False
+
 
 # ==========================================
 # 2. Session State Initialization
@@ -214,42 +256,77 @@ elif st.session_state.step == 2:
 # STEP 3: ตรวจสอบข้อมูลทั้งหมดและบันทึก Excel
 # ==========================================
 elif st.session_state.step == 3:
-    st.subheader("ขั้นตอนที่ 3: ตรวจสอบข้อมูลและบันทึก")
-    
-    st.write(f"📌 **Supplier:** {st.session_state.supplier_name}")
-    st.write(f"📌 **เลขที่บิล:** {st.session_state.invoice_no} | **วันที่:** {st.session_state.invoice_date}")
-    
-    # เปิดให้แก้ไขตารางขั้นสุดท้ายก่อนเซฟ
-    edited_df = st.data_editor(st.session_state.df_items, use_container_width=True)
-    st.session_state.df_items = edited_df
-    
-    col_back, col_save = st.columns(2)
-    with col_back:
-        if st.button("🔄 กลับไปถ่ายรูปใหม่"):
-            st.session_state.step = 2
-            st.session_state.current_item_idx = 0
-            st.rerun()
-            
-    with col_save:
-        if st.button("✅ ยืนยันและบันทึกเป็นไฟล์ Excel"):
-            target_dir = r"G:\ร้านยา\web app\excel file from extract"
-            os.makedirs(target_dir, exist_ok=True)
-            
-            safe_inv = "".join([c if c.isalnum() else "_" for c in str(st.session_state.invoice_no)])
-            file_name = f"DN_Receive_{safe_inv}.xlsx"
-            file_path = os.path.join(target_dir, file_name)
-            
-            try:
-                with pd.ExcelWriter(file_path, engine="openpyxl") as writer:
-                    edited_df.to_excel(writer, sheet_name="Receive_Items", index=False)
-                    
-                st.success(f"🎉 บันทึกไฟล์สำเร็จเรียบร้อยแล้ว!\n\n📂 เซฟไว้ที่: `{file_path}`")
-                
-                if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
-                    st.session_state.step = 1
-                    st.session_state.df_items = pd.DataFrame(columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"])
-                    st.session_state.current_item_idx = 0
-                    st.session_state.invoice_no = ""
-                    st.rerun()
-            except Exception as e:
-                st.error(f"เกิดข้อผิดพลาดในการบันทึกไฟล์: {e}")
+  st.subheader("ขั้นตอนที่ 3: ตรวจสอบข้อมูลและบันทึก")
+
+  st.write(f"📌 **Supplier:** {st.session_state.supplier_name}")
+  st.write(
+      f"📌 **เลขที่บิล:** {st.session_state.invoice_no} | **วันที่:**"
+      f" {st.session_state.invoice_date}"
+  )
+
+  # เปิดให้แก้ไขตารางขั้นสุดท้ายก่อนเซฟ
+  edited_df = st.data_editor(st.session_state.df_items, use_container_width=True)
+  st.session_state.df_items = edited_df
+
+  col_back, col_save = st.columns(2)
+  with col_back:
+    if st.button("🔄 กลับไปถ่ายรูปใหม่"):
+      st.session_state.step = 2
+      st.session_state.current_item_idx = 0
+      st.rerun()
+
+  with col_save:
+    if st.button("✅ ยืนยันและบันทึกเป็นไฟล์ Excel"):
+      safe_inv = "".join(
+          [c if c.isalnum() else "_" for c in str(st.session_state.invoice_no)]
+      )
+      file_name = f"DN_Receive_{safe_inv}.xlsx"
+
+      try:
+        # 1. แปลง DataFrame เป็น Bytes ในหน่วยความจำ (สำหรับแนบอีเมล)
+        excel_buffer = io.BytesIO()
+        with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
+          edited_df.to_excel(writer, sheet_name="Receive_Items", index=False)
+        excel_bytes = excel_buffer.getvalue()
+
+        # 2. บันทึกไฟล์ลงเครื่อง (เฉพาะกรณีรัน Local ที่มีโฟลเดอร์รองรับ)
+        target_dir = r"G:\ร้านยา\web app\excel file from extract"
+        try:
+          os.makedirs(target_dir, exist_ok=True)
+          file_path = os.path.join(target_dir, file_name)
+          with open(file_path, "wb") as f:
+            f.write(excel_bytes)
+          local_saved = True
+        except Exception:
+          local_saved = False  # ถ้ารันบน Cloud แล้วไม่มี path นี้ ข้ามไปไม่ต้อง Error
+
+        # 3. ส่งอีเมลพร้อมแนบไฟล์ Excel อัตโนมัติ
+        email_success = send_email_with_excel(
+            excel_bytes, file_name, st.session_state.supplier_name
+        )
+
+        # 4. แสดงผลลัพธ์ให้ผู้ใช้ทราบ
+        if local_saved:
+          st.success(
+              f"🎉 บันทึกไฟล์และส่งอีเมลสำเร็จ!\n\n📂 เซฟไว้ที่:"
+              f" `{file_path}`"
+          )
+        else:
+          st.success(
+              "🎉 ประมวลผลและส่งอีเมลรายงานเข้าสู่ระบบสำเร็จเรียบร้อยแล้ว!"
+          )
+
+        if email_success:
+          st.info("✉️ ส่งไฟล์รายงานเข้าอีเมลเรียบร้อยครับ")
+
+        if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
+          st.session_state.step = 1
+          st.session_state.df_items = pd.DataFrame(
+              columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"]
+          )
+          st.session_state.current_item_idx = 0
+          st.session_state.invoice_no = ""
+          st.rerun()
+
+      except Exception as e:
+        st.error(f"เกิดข้อผิดพลาดในการบันทึกหรือส่งอีเมล: {e}")
