@@ -167,7 +167,7 @@ elif st.session_state.step == 2:
                       "exp": "วันหมดอายุรูปแบบ YYYY-MM-DD หรือ -"
                     }"""
                     response = client.models.generate_content(
-                        model="gemini-2.5-flash",
+                        model="gemini-3.5-flash-lite",
                         contents=[img, prompt]
                     )
                     text_out = response.text.strip()
