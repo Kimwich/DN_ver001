@@ -276,7 +276,7 @@ elif st.session_state.step == 3:
       st.rerun()
 
   with col_save:
-    if st.button("✅ ยืนยันและบันทึกเป็นไฟล์ Excel"):
+    if st.button("✅ ยืนยันและ ส่งข้อมูลเข้าอีเมล"):
       safe_inv = "".join(
           [c if c.isalnum() else "_" for c in str(st.session_state.invoice_no)]
       )
