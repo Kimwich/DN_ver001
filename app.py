@@ -193,6 +193,22 @@ elif st.session_state.step == 2:
         current_row = df.iloc[idx]
         
         st.info(f"👉 **กำลังสแกนสินค้า:**\n\n📌 **{current_row['ชื่อสินค้า']}**\n- จำนวน: {current_row['จำนวน']} | ราคา: {current_row['ราคา']}")
+
+        st.markdown(
+            """
+            <script>
+            // ค้นหาแท็ก video หรือ input ของกล้องแล้วบังคับใช้ environment (กล้องหลัง)
+            document.addEventListener("DOMContentLoaded", function() {
+                const inputs = document.querySelectorAll('input[type="file"]');
+                inputs.forEach(input => {
+                    input.setAttribute('capture', 'environment');
+                });
+            });
+            </script>
+            """,
+            unsafe_allow_html=True,
+        )
+
         
         # ใช้ camera_input เพื่อให้พนักงานกดถ่ายรูปจากมือถือได้ทันที
         label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}")
