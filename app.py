@@ -419,6 +419,36 @@ elif st.session_state.step == 3:
       except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการบันทึกหรือส่งอีเมล: {e}")
 
+
+    # ==========================================
+    # ส่วนเว้นระยะห่าง และปุ่มเริ่มทำรายการใหม่ (สีเขียว)
+    # ==========================================
+    
+    # เคาะเว้นบรรทัดลงไปประมาณ 3 บรรทัด เพื่อป้องกันการกดโดนโดยไม่ได้ตั้งใจ
+    st.markdown("<br><br><br>", unsafe_allow_html=True)
+
+    # ใส่ CSS เฉพาะกิจสำหรับแต่งปุ่ม "เริ่มทำรายการใหม่" ให้เป็นสีเขียว
+    st.markdown(
+        """
+        <style>
+        /* ค้นหาปุ่มที่มีข้อความ "เริ่มทำรายการใหม่" แล้วเปลี่ยนเป็นสีเขียว */
+        div.stButton > button:has(p:contains("เริ่มทำรายการใหม่")) {
+            background-color: #28A745 !important; /* สีเขียว */
+            color: #FFFFFF !important;            /* ตัวหนังสือสีขาว */
+            border: none !important;
+            width: 100% !important;               /* ขยายให้ปุ่มยาวเต็มตา */
+        }
+        div.stButton > button:has(p:contains("เริ่มทำรายการใหม่")):hover {
+            background-color: #218838 !important; /* สีเขียวเข้มขึ้นตอนเอาเมาส์ชี้ */
+            color: #FFFFFF !important;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+      
     # ปุ่มสำหรับเริ่มทำรายการใหม่ (วางไว้ให้กดเคลียร์ค่าเริ่มต้น)
     if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
       st.session_state.step = 1
