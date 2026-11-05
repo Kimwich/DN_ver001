@@ -416,13 +416,13 @@ elif st.session_state.step == 3:
 
             # สร้างออบเจกต์รูปภาพสำหรับ openpyxl
             img = OpenpyxlImage(img_io)
-            img.width = 100  # กำหนดความกว้างรูป (พิกเซล)
-            img.height = 75  # กำหนดความสูงรูป (พิกเซล)
+            img.width = 200  # กำหนดความกว้างรูป (พิกเซล)
+            img.height = 150  # กำหนดความสูงรูป (พิกเซล)
 
             # แปะรูปลงในเซลล์คอลัมน์ขวาสุด เช่น H2, H3, H4...
             ws.add_image(img, f"{img_col_letter}{row_num}")
             ws.row_dimensions[row_num].height = (
-                60  # ขยายความสูงแถวให้พอดีกับรูป
+                300  # ขยายความสูงแถวให้พอดีกับรูป
             )
 
         # 3. บันทึกไฟล์ Excel สมบูรณ์พร้อมรูปภาพลง BytesIO เพื่อเตรียมส่งอีเมล
