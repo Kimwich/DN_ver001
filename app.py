@@ -200,11 +200,14 @@ elif st.session_state.step == 2:
             /* ขยายความกว้างของกล่อง camera_input ให้เต็มพื้นที่ */
             [data-testid="stCameraInput"] {
                 max-width: 100% !important;
+                overflow: hidden !important; /* ซ่อนส่วนเกินจากการซูม */
             }
-            /* ขยายขนาดวิดีโอพรีวิวกล้องให้ใหญ่ขึ้น */
+            /* ซูมภาพวิดีโอในกล้องเข้าไป 20% (scale 1.2) */
             [data-testid="stCameraInput"] video {
                 width: 100% !important;
                 height: auto !important;
+                transform: scale(1.2);
+                transform-origin: center center;
             }
             </style>
             """,
