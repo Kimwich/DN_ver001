@@ -196,15 +196,17 @@ elif st.session_state.step == 2:
 
         st.markdown(
             """
-            <script>
-            // ค้นหาแท็ก video หรือ input ของกล้องแล้วบังคับใช้ environment (กล้องหลัง)
-            document.addEventListener("DOMContentLoaded", function() {
-                const inputs = document.querySelectorAll('input[type="file"]');
-                inputs.forEach(input => {
-                    input.setAttribute('capture', 'environment');
-                });
-            });
-            </script>
+            <style>
+            /* ขยายความกว้างของกล่อง camera_input ให้เต็มพื้นที่ */
+            [data-testid="stCameraInput"] {
+                max-width: 100% !important;
+            }
+            /* ขยายขนาดวิดีโอพรีวิวกล้องให้ใหญ่ขึ้น */
+            [data-testid="stCameraInput"] video {
+                width: 100% !important;
+                height: auto !important;
+            }
+            </style>
             """,
             unsafe_allow_html=True,
         )
