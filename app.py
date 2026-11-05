@@ -438,7 +438,7 @@ elif st.session_state.step == 3:
             border: none !important;
             width: 100% !important;               /* ขยายให้ปุ่มยาวเต็มตา */
         }
-        div.stButton > button:has(p:contains("เริ่มทำรายการใหม่")):hover {
+        div.stButton > button:has(p:contains("🔄 เริ่มทำรายการใหม่ (New Bill)")):hover {
             background-color: #218838 !important; /* สีเขียวเข้มขึ้นตอนเอาเมาส์ชี้ */
             color: #FFFFFF !important;
         }
