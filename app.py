@@ -404,6 +404,9 @@ elif st.session_state.step == 3:
         img_col_letter = openpyxl.utils.get_column_letter(ws.max_column + 1)
         ws[f"{img_col_letter}1"] = "รูปฉลากสินค้า"
 
+        # 📌 [เพิ่มบรรทัดนี้]: ขยายความกว้างของคอลัมน์รูปภาพให้กว้างขึ้น (เช่น 25) เพื่อรับรูปขนาดใหญ่
+        ws.column_dimensions[img_col_letter].width = 25
+          
         # วนลูปหยิบรูปภาพที่เก็บไว้ใน session_state มาแปะตามแถวสินค้า
         for idx, row in edited_df.iterrows():
           row_num = idx + 2  # แถวที่ 1 เป็น Header หัวตาราง
