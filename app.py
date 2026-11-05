@@ -11,6 +11,9 @@ from email import message
 from email.mime.application import MIMEApplication
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+import openpyxl
+from openpyxl.drawing.image import Image as OpenpyxlImage
+
 
 # ==========================================
 # 0. ตั้งค่าหน้าเว็บและการรองรับ HEIC
@@ -66,7 +69,7 @@ else:
     client = genai.Client()
 
 # ==========================================
-# 1.1 วางฟังก์ชันส่งอีเมลไว้ตรงนี้ (ระดับบนสุดของสคริปต์)
+# 2 วางฟังก์ชันส่งอีเมลไว้ตรงนี้ (ระดับบนสุดของสคริปต์)
 # ==========================================
 def send_email_with_excel(excel_bytes, filename, supplier_name):
   try:
@@ -102,7 +105,7 @@ def send_email_with_excel(excel_bytes, filename, supplier_name):
 
 
 # ==========================================
-# 2. Session State Initialization
+# 3. Session State Initialization
 # ==========================================
 if "step" not in st.session_state:
     st.session_state.step = 1  # 1: อัปโหลดบิลและสกัดตาราง, 2: ถ่ายรูปฉลากทีละชิ้น, 3: ตรวจสอบและบันทึก
@@ -117,11 +120,17 @@ if "invoice_no" not in st.session_state:
 if "invoice_date" not in st.session_state:
     st.session_state.invoice_date = datetime.now().date()
 
+# สร้างที่เก็บรูปภาพชั่วคราวใน session_state ถ้ายังไม่มี
+if "item_images" not in st.session_state:
+    st.session_state.item_images = {}
+
 st.title("📦 ระบบลงสินค้า DN ver.001")
 st.markdown("---")
 
+
+
 # ==========================================
-# STEP 1: ถ่ายรูปบิล & AI สกัดรายการสินค้า
+# 4. ถ่ายรูปบิล & AI สกัดรายการสินค้า
 # ==========================================
 if st.session_state.step == 1:
     st.subheader("ขั้นตอนที่ 1: ถ่ายรูปบิลรับสินค้า")
@@ -179,8 +188,12 @@ if st.session_state.step == 1:
             except Exception as e:
                 st.error(f"เกิดข้อผิดพลาดในการอ่านบิล: {e}")
 
+
+
+
+
 # ==========================================
-# STEP 2: ถ่ายรูปฉลากสินค้าทีละรายการ (Item-by-Item)
+# 5. ถ่ายรูปฉลากสินค้าทีละรายการ (Item-by-Item)
 # ==========================================
 elif st.session_state.step == 2:
     df = st.session_state.df_items
@@ -202,7 +215,7 @@ elif st.session_state.step == 2:
                 max-width: 100% !important;
                 overflow: hidden !important; /* ซ่อนส่วนเกินจากการซูม */
             }
-            /* ซูมภาพวิดีโอในกล้องเข้าไป 20% (scale 1.2) */
+            /* ซูมภาพวิดีโอในกล้องเข้าไป 30% (scale 1.3) */
             [data-testid="stCameraInput"] video {
                 width: 100% !important;
                 height: auto !important;
@@ -231,9 +244,12 @@ elif st.session_state.step == 2:
 
         
         # ใช้ camera_input เพื่อให้พนักงานกดถ่ายรูปจากมือถือได้ทันที
-        label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}")
+        label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}", key=f"cam_{idx}")
         
         if label_image:
+            # 📌 [จุดที่เพิ่มเข้ามา]: บันทึกรูปภาพของสินค้ารายการนี้เก็บไว้ใน session_state โดยอ้างอิงตาม index (idx)
+            st.session_state.item_images[idx] = label_image.getvalue()
+
             with st.spinner("AI กำลังอ่าน Lot, MFG, และ EXP จากฉลาก..."):
                 try:
                     img = Image.open(label_image)
@@ -249,7 +265,7 @@ elif st.session_state.step == 2:
                     """ 
                    
                     response = client.models.generate_content(
-                        model="gemini-3.5-flash-lite",
+                        model="gemini-3.5-flash-lite", # หรือโมเดลที่คุณนิคกี้ใช้งานอยู่
                         contents=[img, prompt]
                     )
                     text_out = response.text.strip()
@@ -266,7 +282,7 @@ elif st.session_state.step == 2:
                     st.success("✅ อ่านข้อมูลจากฉลากสำเร็จ!")
                 except Exception as e:
                     st.error(f"อ่านฉลากไม่สำเร็จ: {e}")
-                    
+                
         # แสดงค่าที่บันทึกแล้วของสินค้านี้
         st.markdown(f"**ข้อมูลปัจจุบัน:** Lot: `{current_row['Lot']}` | MFG: `{current_row['MFG']}` | EXP: `{current_row['EXP']}`")
         
@@ -292,8 +308,12 @@ elif st.session_state.step == 2:
                 st.session_state.step = 3
                 st.rerun()
 
+
+
+
+
 # ==========================================
-# STEP 3: ตรวจสอบข้อมูลทั้งหมดและบันทึก Excel
+# 6. ตรวจสอบข้อมูลทั้งหมดและบันทึก Excel
 # ==========================================
 elif st.session_state.step == 3:
   st.subheader("ขั้นตอนที่ 3: ตรวจสอบข้อมูลและบันทึก")
