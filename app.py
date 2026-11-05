@@ -195,7 +195,7 @@ elif st.session_state.step == 2:
         st.info(f"👉 **กำลังสแกนสินค้า:**\n\n📌 **{current_row['ชื่อสินค้า']}**\n- จำนวน: {current_row['จำนวน']} | ราคา: {current_row['ราคา']}")
         
         # ใช้ camera_input เพื่อให้พนักงานกดถ่ายรูปจากมือถือได้ทันที
-        label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}", facing="environment")
+        label_image = st.camera_input(f"ถ่ายรูปฉลากข้างกล่อง: {current_row['ชื่อสินค้า']}")
         
         if label_image:
             with st.spinner("AI กำลังอ่าน Lot, MFG, และ EXP จากฉลาก..."):
