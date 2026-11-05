@@ -209,6 +209,21 @@ elif st.session_state.step == 2:
                 transform: scale(1.2);
                 transform-origin: center center;
             }
+            
+            /* ปรับแต่งปุ่มถ่ายรูป (Take Photo Button) ให้เป็นสีเหลือง */
+            [data-testid="stCameraInput"] button[kind="secondary"], 
+            [data-testid="stCameraInput"] button {
+                background-color: #FFC107 !important; /* สีเหลือง */
+                color: #000000 !important;          /* สีของข้อความ/ไอคอนด้านในเป็นสีดำเพื่อให้ตัดกันและมองเห็นชัดเจน */
+                border: none !important;
+            }
+            
+            /* เอฟเฟกต์ตอนเอาเมาส์ชี้หรือกดปุ่ม (Hover/Active) */
+            [data-testid="stCameraInput"] button:hover {
+                background-color: #FFB300 !important;
+                color: #000000 !important;
+            }
+            
             </style>
             """,
             unsafe_allow_html=True,
