@@ -343,13 +343,44 @@ elif st.session_state.step == 3:
       file_name = f"DN_Receive_{safe_inv}.xlsx"
 
       try:
-        # 1. แปลง DataFrame เป็น Bytes ในหน่วยความจำ (สำหรับแนบอีเมล)
+        # 1. สร้าง Excel DataFrame เป็น Bytes ปกิติก่อน
         excel_buffer = io.BytesIO()
         with pd.ExcelWriter(excel_buffer, engine="openpyxl") as writer:
           edited_df.to_excel(writer, sheet_name="Receive_Items", index=False)
-        excel_bytes = excel_buffer.getvalue()
+        excel_buffer.seek(0)
 
-        # 2. บันทึกไฟล์ลงเครื่อง (เฉพาะกรณีรัน Local ที่มีโฟลเดอร์รองรับ)
+        # 📌 2. โหลดไฟล์ด้วย openpyxl เพื่อนำรูปภาพฉลากสินค้ามาแทรกในคอลัมน์ขวาสุด
+        wb = openpyxl.load_workbook(excel_buffer)
+        ws = wb["Receive_Items"]
+
+        # หาคอลัมน์ขวาสุดสำหรับวางรูปฉลาก
+        img_col_letter = openpyxl.utils.get_column_letter(ws.max_column + 1)
+        ws[f"{img_col_letter}1"] = "รูปฉลากสินค้า"
+
+        # วนลูปหยิบรูปภาพที่เก็บไว้ใน session_state มาแปะตามแถวสินค้า
+        for idx, row in edited_df.iterrows():
+          row_num = idx + 2  # แถวที่ 1 เป็น Header หัวตาราง
+          if idx in st.session_state.get("item_images", {}):
+            img_bytes = st.session_state.item_images[idx]
+            img_io = io.BytesIO(img_bytes)
+
+            # สร้างออบเจกต์รูปภาพสำหรับ openpyxl
+            img = OpenpyxlImage(img_io)
+            img.width = 100  # กำหนดความกว้างรูป (พิกเซล)
+            img.height = 75  # กำหนดความสูงรูป (พิกเซล)
+
+            # แปะรูปลงในเซลล์คอลัมน์ขวาสุด เช่น H2, H3, H4...
+            ws.add_image(img, f"{img_col_letter}{row_num}")
+            ws.row_dimensions[row_num].height = (
+                60  # ขยายความสูงแถวให้พอดีกับรูป
+            )
+
+        # 3. บันทึกไฟล์ Excel สมบูรณ์พร้อมรูปภาพลง BytesIO เพื่อเตรียมส่งอีเมล
+        final_output = io.BytesIO()
+        wb.save(final_output)
+        excel_bytes = final_output.getvalue()
+
+        # 4. บันทึกไฟล์ลงเครื่อง (เฉพาะกรณีรัน Local ที่มีโฟลเดอร์รองรับ)
         target_dir = r"G:\ร้านยา\web app\excel file from extract"
         try:
           os.makedirs(target_dir, exist_ok=True)
@@ -358,14 +389,16 @@ elif st.session_state.step == 3:
             f.write(excel_bytes)
           local_saved = True
         except Exception:
-          local_saved = False  # ถ้ารันบน Cloud แล้วไม่มี path นี้ ข้ามไปไม่ต้อง Error
+          local_saved = (
+              False  # ถ้ารันบน Cloud แล้วไม่มี path นี้ ข้ามไปไม่ต้อง Error
+          )
 
-        # 3. ส่งอีเมลพร้อมแนบไฟล์ Excel อัตโนมัติ
+        # 5. ส่งอีเมลพร้อมแนบไฟล์ Excel (ที่มีรูปภาพแนบแล้ว) อัตโนมัติ
         email_success = send_email_with_excel(
             excel_bytes, file_name, st.session_state.supplier_name
         )
 
-        # 4. แสดงผลลัพธ์ให้ผู้ใช้ทราบ
+        # 6. แสดงผลลัพธ์ให้ผู้ใช้ทราบ
         if local_saved:
           st.success(
               f"🎉 บันทึกไฟล์และส่งอีเมลสำเร็จ!\n\n📂 เซฟไว้ที่:"
@@ -373,20 +406,24 @@ elif st.session_state.step == 3:
           )
         else:
           st.success(
-              "🎉 ประมวลผลและส่งอีเมลรายงานเข้าสู่ระบบสำเร็จเรียบร้อยแล้ว!"
+              "🎉 ประมวลผลและส่งอีเมลรายงานเข้าสู่ระบบพร้อมรูปภาพฉลากสำเร็จเรียบร้อยแล้ว!"
           )
 
         if email_success:
           st.info("✉️ ส่งไฟล์รายงานเข้าอีเมลเรียบร้อยครับ")
 
-        if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
-          st.session_state.step = 1
-          st.session_state.df_items = pd.DataFrame(
-              columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"]
-          )
-          st.session_state.current_item_idx = 0
-          st.session_state.invoice_no = ""
-          st.rerun()
-
       except Exception as e:
         st.error(f"เกิดข้อผิดพลาดในการบันทึกหรือส่งอีเมล: {e}")
+
+    # ปุ่มสำหรับเริ่มทำรายการใหม่ (วางไว้ให้กดเคลียร์ค่าเริ่มต้น)
+    if st.button("🔄 เริ่มทำรายการใหม่ (New Bill)"):
+      st.session_state.step = 1
+      st.session_state.df_items = pd.DataFrame(
+          columns=["ลำดับ", "ชื่อสินค้า", "จำนวน", "ราคา", "Lot", "MFG", "EXP"]
+      )
+      st.session_state.current_item_idx = 0
+      st.session_state.invoice_no = ""
+      st.session_state.item_images = (
+          {}
+      )  # ล้างรูปภาพเก่าของบิลเดิมออกด้วยครับ
+      st.rerun()
