@@ -206,7 +206,7 @@ elif st.session_state.step == 2:
             [data-testid="stCameraInput"] video {
                 width: 100% !important;
                 height: auto !important;
-                transform: scale(1.2);
+                transform: scale(1.3);
                 transform-origin: center center;
             }
             
