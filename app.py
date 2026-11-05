@@ -431,7 +431,7 @@ elif st.session_state.step == 3:
     st.markdown(
         """
         <style>
-        /* ค้นหาปุ่มที่มีข้อความ "เริ่มทำรายการใหม่" แล้วเปลี่ยนเป็นสีเขียว */
+        /* ค้นหาปุ่มที่มีข้อความ "🔄 เริ่มทำรายการใหม่ (New Bill)" แล้วเปลี่ยนเป็นสีเขียว */
         div.stButton > button:has(p:contains("เริ่มทำรายการใหม่")) {
             background-color: #28A745 !important; /* สีเขียว */
             color: #FFFFFF !important;            /* ตัวหนังสือสีขาว */
