@@ -130,25 +130,55 @@ st.markdown("---")
 
 
 # ==========================================
-# 4. ถ่ายรูปบิล & AI สกัดรายการสินค้า
+# 4. ถ่ายรูปบิล & AI สกัดรายการสินค้า (รองรับหลายหน้า)
 # ==========================================
 if st.session_state.step == 1:
-    st.subheader("ขั้นตอนที่ 1: ถ่ายรูปบิลรับสินค้า")
-    
-    st.session_state.supplier_name = st.text_input("ชื่อบริษัท / ผู้จัดจำหน่าย (Supplier)", value=st.session_state.supplier_name)
-    st.session_state.invoice_no = st.text_input("เลขที่บิล / ใบกำกับภาษี", value=st.session_state.invoice_no)
-    st.session_state.invoice_date = st.date_input("วันที่ในบิล", value=st.session_state.invoice_date)
-    
-    bill_image = st.file_uploader("📸 ถ่ายรูปหรืออัปโหลดใบรับสินค้า", type=["png", "jpg", "jpeg", "heic"])
-    
-    if bill_image:
-        st.image(bill_image, caption="ใบรับสินค้าที่อัปโหลด", use_container_width=True)
-        
-    if st.button("🤖 ให้ AI สร้างตารางสินค้าจากบิล", disabled=not bill_image or not st.session_state.supplier_name):
-        with st.spinner("AI กำลังอ่านข้อมูลบิลและสร้างตาราง..."):
-            try:
-                img = Image.open(bill_image)
-                prompt = """คุณคือ AI ช่วยอ่านบิลสินค้า จงสกัดรายการสินค้าออกมาเป็น JSON เท่านั้น โดยมีโครงสร้างดังนี้:
+  st.subheader("ขั้นตอนที่ 1: ถ่ายรูปบิลรับสินค้า (รองรับบิลหลายหน้า)")
+
+  st.session_state.supplier_name = st.text_input(
+      "ชื่อบริษัท / ผู้จัดจำหน่าย (Supplier)",
+      value=st.session_state.supplier_name,
+  )
+  st.session_state.invoice_no = st.text_input(
+      "เลขที่บิล / ใบกำกับภาษี", value=st.session_state.invoice_no
+  )
+  st.session_state.invoice_date = st.date_input(
+      "วันที่ในบิล", value=st.session_state.invoice_date
+  )
+
+  # 📌 ปรับให้รับไฟล์ได้หลายไฟล์พร้อมกัน (accept_multiple_files=True)
+  bill_images = st.file_uploader(
+      "📸 ถ่ายรูปหรืออัปโหลดใบรับสินค้า (เลือกได้หลายหน้าพร้อมกัน)",
+      type=["png", "jpg", "jpeg", "heic"],
+      accept_multiple_files=True,
+  )
+
+  if bill_images:
+    st.write(f"📁 อัปโหลด/เลือกบิลมาแล้วทั้งหมด **{len(bill_images)} หน้า**")
+    # แสดงรูปภาพตัวอย่างทุกหน้าที่อัปโหลด
+    for i, img_file in enumerate(bill_images):
+      st.image(
+          img_file,
+          caption=f"ใบรับสินค้า หน้าที่ {i+1}",
+          use_container_width=True,
+      )
+
+  # เงื่อนไขปุ่มกดทำงาน จะเช็คจาก list ของ bill_images ว่ามีข้อมูลหรือไม่
+  if st.button(
+      "🤖 ให้ AI สร้างตารางสินค้าจากบิลทุกหน้า",
+      disabled=not bill_images or not st.session_state.supplier_name,
+  ):
+    with st.spinner(
+        "AI กำลังอ่านข้อมูลบิลทุกหน้าและรวบรวมสร้างตารางสินค้า..."
+    ):
+      try:
+        # 1. เปิดไฟล์รูปภาพทุกหน้าเก็บไว้ใน List
+        img_list = []
+        for img_file in bill_images:
+          img_list.append(Image.open(img_file))
+
+        # 2. ปรับ Prompt ให้ AI รองรับหลายภาพและรวมข้อมูลเป็นชุดเดียว
+        prompt = """คุณคือ AI ช่วยอ่านบิลสินค้า ซึ่งอาจมีหลายหน้า จงอ่านภาพบิลทั้งหมดที่แนบมานี้ แล้วสกัดรายการสินค้าออกมาเป็น JSON เท่านั้น โดยมีโครงสร้างดังนี้:
                 {
                   "items": [
                     {
@@ -157,36 +187,49 @@ if st.session_state.step == 1:
                       "price": ราคาต่อหน่วย (ตัวเลข)
                     }
                   ]
-                }"""
-                response = client.models.generate_content(
-                    model="gemini-3.5-flash-lite",
-                    contents=[img, prompt]
-                )
-                text_out = response.text.strip()
-                if text_out.startswith("```json"):
-                    text_out = text_out[7:-3]
-                
-                data = json.loads(text_out.strip())
-                items = data.get("items", [])
-                
-                rows = []
-                for idx, item in enumerate(items, start=1):
-                    rows.append({
-                        "ลำดับ": idx,
-                        "ชื่อสินค้า": item.get("name", ""),
-                        "จำนวน": item.get("qty", 1),
-                        "ราคา": item.get("price", 0.0),
-                        "Lot": "-",
-                        "MFG": "-",
-                        "EXP": "-"
-                    })
-                
-                st.session_state.df_items = pd.DataFrame(rows)
-                st.session_state.current_item_idx = 0
-                st.session_state.step = 2
-                st.rerun()
-            except Exception as e:
-                st.error(f"เกิดข้อผิดพลาดในการอ่านบิล: {e}")
+                }
+                *หมายเหตุ: หากมีหลายหน้า ให้รวบรวมรายการสินค้าทั้งหมดจากทุกหน้าเข้าด้วยกันเป็น List เดียว*"""
+
+        # 3. ส่งข้อมูลภาพทั้งหมดพร้อม Prompt เข้าไปยัง Gemini
+        response = client.models.generate_content(
+            model="gemini-2.5-flash", contents=[*img_list, prompt]
+        )
+        text_out = response.text.strip()
+
+        # 4. ใช้ Regex ค้นหาและดึงเฉพาะ JSON ออกมาป้องกัน Error ข้อความขยะ
+        import re
+
+        json_match = re.search(r"\{.*\}", text_out, re.DOTALL)
+        if json_match:
+          clean_json_str = json_match.group(0)
+          data = json.loads(clean_json_str)
+        else:
+          data = json.loads(text_out)
+
+        items = data.get("items", [])
+
+        rows = []
+        for idx, item in enumerate(items, start=1):
+          rows.append({
+              "ลำดับ": idx,
+              "ชื่อสินค้า": item.get("name", ""),
+              "จำนวน": item.get("qty", 1),
+              "ราคา": item.get("price", 0.0),
+              "Lot": "-",
+              "MFG": "-",
+              "EXP": "-",
+          })
+
+        st.session_state.df_items = pd.DataFrame(rows)
+        st.session_state.current_item_idx = 0
+        st.session_state.step = 2
+        st.rerun()
+
+      except Exception as e:
+        st.error(
+            f"เกิดข้อผิดพลาดในการอ่านบิลหลายหน้า: {e} | ข้อมูลที่ตอบกลับ:"
+            f" {text_out}"
+        )
 
 
 
