@@ -417,7 +417,7 @@ elif st.session_state.step == 3:
             # สร้างออบเจกต์รูปภาพสำหรับ openpyxl
             img = OpenpyxlImage(img_io)
             img.width = 200  # กำหนดความกว้างรูป (พิกเซล)
-            img.height = 150  # กำหนดความสูงรูป (พิกเซล)
+            img.height = 300  # กำหนดความสูงรูป (พิกเซล)
 
             # แปะรูปลงในเซลล์คอลัมน์ขวาสุด เช่น H2, H3, H4...
             ws.add_image(img, f"{img_col_letter}{row_num}")
