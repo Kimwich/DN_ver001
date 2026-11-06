@@ -192,7 +192,7 @@ if st.session_state.step == 1:
 
         # 3. ส่งข้อมูลภาพทั้งหมดพร้อม Prompt เข้าไปยัง Gemini
         response = client.models.generate_content(
-            model="gemini-2.5-flash", contents=[*img_list, prompt]
+            model="gemini-3.5-flash-lite", contents=[*img_list, prompt]
         )
         text_out = response.text.strip()
 
